@@ -1,0 +1,18 @@
+{
+  "name": "data-bot",
+  "version": "1.0.0",
+  "description": "Data Bot — Bot Telegram Pencatat Keuangan yang Ramah & Interaktif",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "keywords": ["telegram", "bot", "keuangan", "finance", "indonesia"],
+  "author": "Carenpedia",
+  "license": "MIT",
+  "dependencies": {
+    "telegraf": "^4.16.3",
+    "better-sqlite3": "^11.7.0",
+    "dotenv": "^16.4.7"
+  }
+}

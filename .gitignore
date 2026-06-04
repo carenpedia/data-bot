@@ -1,0 +1,16 @@
+# Data Bot
+
+# Dependencies
+node_modules/
+
+# Environment variables
+.env
+
+# Database
+database.sqlite
+database.sqlite-wal
+database.sqlite-shm
+
+# OS files
+.DS_Store
+Thumbs.db
