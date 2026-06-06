@@ -6,7 +6,7 @@
 // Mendukung flow: tampilkan → konfirmasi → hapus.
 // ============================================
 
-const { getLastTransaction, deleteTransaction } = require('../services/transaction');
+const { getLastTransaction, deleteTransaction, getUser } = require('../services/transaction');
 const { formatRupiah, formatDateTime } = require('../utils/formatter');
 const { backToMenuKeyboard } = require('../utils/keyboard');
 const { Markup } = require('telegraf');
@@ -133,9 +133,18 @@ function register(bot) {
       const transactionId = parseInt(ctx.match[1], 10);
 
       // Hapus transaksi dari database
-      const deleted = deleteTransaction(transactionId);
+      const deleted = deleteTransaction(transactionId, ctx.from.id);
 
       if (deleted) {
+        // Hapus dari Google Sheet juga jika ada sheet_url
+        const user = getUser(ctx.from.id);
+        if (user && user.sheet_url) {
+          const { deleteLastTransactionFromSheet } = require('../services/googleSheets');
+          deleteLastTransactionFromSheet(user.sheet_url).catch(err => 
+            console.error('❌ Gagal menghapus transaksi dari Google Sheet:', err)
+          );
+        }
+
         const successMessage =
           `✅ *Transaksi berhasil dihapus!*\n\n` +
           `Data keuanganmu sudah diperbarui 👍`;

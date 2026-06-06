@@ -102,6 +102,14 @@ function createBot(token) {
       // Simpan transaksi ke database
       const transaction = saveTransaction(ctx.from.id, parsed);
 
+      // Sinkronisasikan ke Google Sheet (jika ada sheet_url)
+      if (user.sheet_url) {
+        const { appendTransactionToSheet } = require('./services/googleSheets');
+        appendTransactionToSheet(user.sheet_url, transaction).catch(err => 
+          console.error('❌ Gagal sinkronisasi transaksi ke Google Sheet:', err)
+        );
+      }
+
       // Ambil ringkasan bulanan terkini
       const summary = getMonthlySummary(ctx.from.id);
 

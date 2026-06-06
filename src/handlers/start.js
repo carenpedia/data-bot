@@ -20,7 +20,19 @@ function register(bot) {
       const telegramId = ctx.from.id;
       const name = ctx.from.first_name || 'Pengguna';
       const username = ctx.from.username || null;
-      ensureUser(telegramId, name, username);
+      const user = ensureUser(telegramId, name, username);
+
+      // Buat Google Sheet otomatis di background (jika belum ada)
+      if (!user.sheet_url) {
+        const { createAutomatedSheet } = require('../services/googleSheets');
+        const { setSheetUrl } = require('../services/transaction');
+        createAutomatedSheet(name).then((url) => {
+          if (url) {
+            setSheetUrl(telegramId, url);
+            console.log(`✅ Otomatis membuat Google Sheet untuk ${name}: ${url}`);
+          }
+        }).catch(err => console.error('❌ Gagal membuat Google Sheet di background:', err));
+      }
 
       // Kirim pesan sambutan yang hangat
       const welcomeMessage =
