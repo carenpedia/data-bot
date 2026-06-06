@@ -171,7 +171,76 @@ async function appendTransactionToSheet(sheetUrl, tx) {
   const { sheets } = clients;
 
   try {
-    // Format tanggal: DD/MM/YYYY HH:mm
+    // 1. Cek apakah Sheet masih kosong (belum ada header di A1:E1)
+    const checkHeader = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: 'Sheet1!A1:E1'
+    });
+
+    const hasHeader = checkHeader.data.values && checkHeader.data.values.length > 0;
+
+    if (!hasHeader) {
+      console.log('📝 Google Sheet terdeteksi kosong. Membuat header & format otomatis...');
+      
+      // Ambil sheetId utama (indeks 0)
+      const spreadsheetInfo = await sheets.spreadsheets.get({ spreadsheetId });
+      const sheetId = spreadsheetInfo.data.sheets[0].properties.sheetId;
+
+      const headers = [['Tanggal', 'Tipe', 'Kategori', 'Keterangan', 'Jumlah (Rp)']];
+      
+      // Tulis header
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: 'Sheet1!A1:E1',
+        valueInputOption: 'USER_ENTERED',
+        requestBody: { values: headers }
+      });
+
+      // Format header (Tebalkan font, beri warna background hijau premium, freeze row)
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          requests: [
+            {
+              repeatCell: {
+                range: {
+                  sheetId,
+                  startRowIndex: 0,
+                  endRowIndex: 1,
+                  startColumnIndex: 0,
+                  endColumnIndex: 5
+                },
+                cell: {
+                  userEnteredFormat: {
+                    backgroundColor: { red: 0.18, green: 0.54, blue: 0.34 }, // Hijau premium
+                    textFormat: {
+                      foregroundColor: { red: 1.0, green: 1.0, blue: 1.0 },
+                      bold: true,
+                      fontSize: 11
+                    },
+                    horizontalAlignment: 'CENTER'
+                  }
+                },
+                fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)'
+              }
+            },
+            {
+              updateSheetProperties: {
+                properties: {
+                  sheetId,
+                  gridProperties: {
+                    frozenRowCount: 1 // Bekukan baris pertama
+                  }
+                },
+                fields: 'gridProperties.frozenRowCount'
+              }
+            }
+          ]
+        }
+      });
+    }
+
+    // 2. Format tanggal: DD/MM/YYYY HH:mm
     const dateObj = new Date(tx.created_at || Date.now());
     const day = String(dateObj.getDate()).padStart(2, '0');
     const month = String(dateObj.getMonth() + 1).padStart(2, '0');
@@ -190,6 +259,7 @@ async function appendTransactionToSheet(sheetUrl, tx) {
       tx.amount || 0
     ];
 
+    // 3. Append data transaksi ke baris berikutnya
     await sheets.spreadsheets.values.append({
       spreadsheetId,
       range: 'Sheet1!A:E',

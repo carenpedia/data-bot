@@ -53,68 +53,20 @@ async function sendSheetMessage(ctx, isCallback = false) {
       await ctx.replyWithMarkdown(message, keyboard);
     }
   } else {
-    // Belum ada sheet URL — buat otomatis!
-    const initMessage = 
+    // Belum ada sheet URL — tampilkan info
+    const message =
       `📄 *Google Sheet*\n` +
       `━━━━━━━━━━━━━━━━━━━\n` +
-      `Spreadsheet kamu belum dibuat. Sedang membuatkan secara otomatis... ⏳\n\n` +
-      `Proses ini memakan waktu beberapa detik saja.`;
-    
-    let statusMsg;
+      `Maaf, Google Sheet kamu belum diatur. 😅\n` +
+      `Hubungi admin untuk mengaktifkan fitur ini!`;
+
     if (isCallback) {
-      statusMsg = await ctx.editMessageText(initMessage, { parse_mode: 'Markdown' });
+      await ctx.editMessageText(message, {
+        parse_mode: 'Markdown',
+        ...backToMenuKeyboard(),
+      });
     } else {
-      statusMsg = await ctx.replyWithMarkdown(initMessage);
-    }
-
-    try {
-      const name = ctx.from.first_name || 'Pengguna';
-      // Jalankan pembuatan sheet otomatis
-      const sheetUrl = await createAutomatedSheet(name);
-
-      if (sheetUrl) {
-        // Simpan ke database
-        setSheetUrl(telegramId, sheetUrl);
-
-        const successMessage =
-          `📄 *Google Sheet Berhasil Dibuat!*\n` +
-          `━━━━━━━━━━━━━━━━━━━\n` +
-          `Google Sheet kamu berhasil dibuat otomatis. Klik tombol di bawah untuk membukanya! 📊`;
-
-        const keyboard = sheetKeyboard(sheetUrl);
-
-        // Kirim update pesan sukses
-        await ctx.telegram.editMessageText(
-          ctx.chat.id,
-          statusMsg.message_id,
-          null,
-          successMessage,
-          {
-            parse_mode: 'Markdown',
-            ...keyboard
-          }
-        );
-      } else {
-        throw new Error('Gagal mendapatkan URL Google Sheet');
-      }
-    } catch (error) {
-      console.error('❌ Gagal otomatisasi sheet di /sheet:', error);
-      const errorMessage =
-        `📄 *Google Sheet*\n` +
-        `━━━━━━━━━━━━━━━━━━━\n` +
-        `Maaf, terjadi kesalahan saat membuat Google Sheet otomatis. 😅\n` +
-        `Hubungi admin untuk bantuan manual.`;
-
-      await ctx.telegram.editMessageText(
-        ctx.chat.id,
-        statusMsg.message_id,
-        null,
-        errorMessage,
-        {
-          parse_mode: 'Markdown',
-          ...backToMenuKeyboard()
-        }
-      );
+      await ctx.replyWithMarkdown(message, backToMenuKeyboard());
     }
   }
 }

@@ -39,9 +39,11 @@ async function runTest() {
     }
     console.log('✅ Test BERHASIL: Berhasil menghapus baris terakhir.');
     console.log('🎉 Semua tes Google Sheets API BERHASIL!');
+    process.exit(0);
 
   } catch (error) {
     console.error('❌ Terjadi error tak terduga selama pengujian:', error);
+    process.exit(1);
   }
 }
 
