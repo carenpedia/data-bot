@@ -276,6 +276,128 @@ async function appendTransactionToSheet(sheetUrl, tx) {
 }
 
 /**
+ * Sinkronisasi seluruh transaksi yang ada di database lokal ke Google Sheet (misal saat sheet baru didaftarkan).
+ *
+ * @param {string} sheetUrl - URL Google Sheet user
+ * @param {Array<object>} transactions - Daftar transaksi dari database (diurutkan dari lama ke baru)
+ * @returns {Promise<boolean>} true jika sukses
+ */
+async function syncAllTransactionsToSheet(sheetUrl, transactions) {
+  if (!transactions || transactions.length === 0) return true;
+
+  const clients = getGoogleClients();
+  if (!clients) return false;
+
+  const spreadsheetId = extractSpreadsheetId(sheetUrl);
+  if (!spreadsheetId) return false;
+
+  const { sheets } = clients;
+
+  try {
+    // 1. Pastikan header sudah ada dan terformat
+    const checkHeader = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: 'Sheet1!A1:E1'
+    });
+
+    const hasHeader = checkHeader.data.values && checkHeader.data.values.length > 0;
+
+    if (!hasHeader) {
+      console.log('📝 Google Sheet kosong saat sync masal. Membuat header & format otomatis...');
+      const spreadsheetInfo = await sheets.spreadsheets.get({ spreadsheetId });
+      const sheetId = spreadsheetInfo.data.sheets[0].properties.sheetId;
+
+      const headers = [['Tanggal', 'Tipe', 'Kategori', 'Keterangan', 'Jumlah (Rp)']];
+      
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: 'Sheet1!A1:E1',
+        valueInputOption: 'USER_ENTERED',
+        requestBody: { values: headers }
+      });
+
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          requests: [
+            {
+              repeatCell: {
+                range: {
+                  sheetId,
+                  startRowIndex: 0,
+                  endRowIndex: 1,
+                  startColumnIndex: 0,
+                  endColumnIndex: 5
+                },
+                cell: {
+                  userEnteredFormat: {
+                    backgroundColor: { red: 0.18, green: 0.54, blue: 0.34 },
+                    textFormat: {
+                      foregroundColor: { red: 1.0, green: 1.0, blue: 1.0 },
+                      bold: true,
+                      fontSize: 11
+                    },
+                    horizontalAlignment: 'CENTER'
+                  }
+                },
+                fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)'
+              }
+            },
+            {
+              updateSheetProperties: {
+                properties: {
+                  sheetId,
+                  gridProperties: {
+                    frozenRowCount: 1
+                  }
+                },
+                fields: 'gridProperties.frozenRowCount'
+              }
+            }
+          ]
+        }
+      });
+    }
+
+    // 2. Format baris-baris data transaksi
+    const rowsData = transactions.map(tx => {
+      const dateObj = new Date(tx.created_at || Date.now());
+      const day = String(dateObj.getDate()).padStart(2, '0');
+      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const year = dateObj.getFullYear();
+      const hours = String(dateObj.getHours()).padStart(2, '0');
+      const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+      const formattedDate = `${day}/${month}/${year} ${hours}:${minutes}`;
+
+      const typeStr = tx.type === 'income' ? 'Pemasukan' : 'Pengeluaran';
+      
+      return [
+        formattedDate,
+        typeStr,
+        tx.category || 'Lainnya',
+        tx.description || '',
+        tx.amount || 0
+      ];
+    });
+
+    // 3. Tulis seluruh data secara massal (batch append)
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: 'Sheet1!A:E',
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: rowsData }
+    });
+
+    console.log(`📊 Berhasil sinkronisasi masal ${transactions.length} transaksi ke Google Sheet.`);
+    return true;
+  } catch (error) {
+    console.error('❌ Gagal sinkronisasi masal transaksi ke Google Sheet:', error);
+    return false;
+  }
+}
+
+
+/**
  * Menghapus baris transaksi terakhir di Google Sheet.
  * Digunakan saat user melakukan pembatalan/penghapusan transaksi terakhir.
  *
@@ -340,5 +462,6 @@ async function deleteLastTransactionFromSheet(sheetUrl) {
 module.exports = {
   createAutomatedSheet,
   appendTransactionToSheet,
-  deleteLastTransactionFromSheet
+  deleteLastTransactionFromSheet,
+  syncAllTransactionsToSheet
 };

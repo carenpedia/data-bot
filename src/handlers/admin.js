@@ -6,7 +6,7 @@
 // admin yang ID-nya tercatat di env ADMIN_ID.
 // ============================================
 
-const { ensureUser, getUser, setSheetUrl, setUserActive, getAllUsers } = require('../services/transaction');
+const { ensureUser, getUser, setSheetUrl, setUserActive, getAllUsers, getUserTransactions } = require('../services/transaction');
 const { formatDate } = require('../utils/formatter');
 
 /**
@@ -163,12 +163,25 @@ function register(bot) {
       // Set sheet URL
       setSheetUrl(user.telegram_id, sheetUrl);
 
+      // Ambil transaksi historis user untuk disinkronkan (limit 1000 transaksi terbaru, lalu di-reverse agar kronologis)
+      const transactions = getUserTransactions(user.telegram_id, 1000);
+      if (transactions && transactions.length > 0) {
+        const { syncAllTransactionsToSheet } = require('../services/googleSheets');
+        // Balikkan urutan agar dari paling lama ke paling baru (kronologis)
+        const chronologicalTx = [...transactions].reverse();
+        
+        syncAllTransactionsToSheet(sheetUrl, chronologicalTx)
+          .then(() => console.log(`✅ Sukses menyinkronkan ${chronologicalTx.length} transaksi historis ke Google Sheet untuk ${user.name}`))
+          .catch(err => console.error(`❌ Gagal menyinkronkan transaksi historis ke Google Sheet untuk ${user.name}:`, err));
+      }
+
       await ctx.reply(
         `✅ Google Sheet berhasil diatur!\n\n` +
         `👤 User: ${user.name}\n` +
         `🆔 ID: ${user.telegram_id}\n` +
         `👤 Username: ${user.username ? '@' + user.username : '(tidak ada)'}\n` +
-        `📄 Sheet: ${sheetUrl}`
+        `📄 Sheet: ${sheetUrl}\n\n` +
+        `🔄 *Sinkronisasi data historis (${transactions.length} transaksi) sedang berjalan di latar belakang...*`
       );
     } catch (error) {
       console.error('❌ Error di /setsheet:', error);
