@@ -144,12 +144,6 @@ function register(bot) {
       const target = args[0];
       const sheetUrl = args[1];
 
-      // Validasi URL sederhana
-      if (!sheetUrl.startsWith('http://') && !sheetUrl.startsWith('https://')) {
-        await ctx.reply('⚠️ URL harus diawali dengan http:// atau https://');
-        return;
-      }
-
       // Cek apakah user terdaftar
       const user = getUser(target);
       if (!user) {
@@ -157,6 +151,25 @@ function register(bot) {
           `⚠️ User dengan ID/Username "${target}" belum terdaftar.\n` +
           `Pastikan user sudah mencari bot ini dan menekan /start terlebih dahulu.`
         );
+        return;
+      }
+
+      // Cek apakah ingin mencabut/menghapus sheet
+      const isUnlink = ['hapus', 'cabut', 'clear', '-'].includes(sheetUrl.toLowerCase());
+      if (isUnlink) {
+        setSheetUrl(user.telegram_id, null);
+        await ctx.reply(
+          `✅ Google Sheet berhasil dicabut!\n\n` +
+          `👤 User: ${user.name}\n` +
+          `🆔 ID: ${user.telegram_id}\n` +
+          `📊 Status: Link spreadsheet telah dihapus.`
+        );
+        return;
+      }
+
+      // Validasi URL sederhana
+      if (!sheetUrl.startsWith('http://') && !sheetUrl.startsWith('https://')) {
+        await ctx.reply('⚠️ URL harus diawali dengan http:// atau https://');
         return;
       }
 
