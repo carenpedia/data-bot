@@ -44,6 +44,120 @@ function extractSpreadsheetId(url) {
 }
 
 /**
+ * Menginisialisasi header dan ringkasan rumus pada Google Sheet yang kosong.
+ *
+ * @param {object} sheets - Instance Sheets API
+ * @param {string} spreadsheetId - ID Spreadsheet
+ * @param {number} sheetId - ID Sheet (tab)
+ */
+async function initializeSheetTemplate(sheets, spreadsheetId, sheetId) {
+  const headers = [['Tanggal', 'Tipe', 'Kategori', 'Keterangan', 'Jumlah (Rp)']];
+  const summary = [
+    ['Total Pemasukan', '=SUMIF(B:B, "Pemasukan", E:E)'],
+    ['Total Pengeluaran', '=SUMIF(B:B, "Pengeluaran", E:E)'],
+    ['Sisa Saldo', '=H1-H2']
+  ];
+
+  // Tulis Header Utama (A1:E1)
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: 'Sheet1!A1:E1',
+    valueInputOption: 'USER_ENTERED',
+    requestBody: { values: headers }
+  });
+
+  // Tulis Tabel Ringkasan (Kolom G & H)
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: 'Sheet1!G1:H3',
+    valueInputOption: 'USER_ENTERED',
+    requestBody: { values: summary }
+  });
+
+  // Format Tampilan (Tebalkan font, warna background, freeze row)
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: [
+        {
+          // Format Header Utama (A1:E1) -> Hijau Premium
+          repeatCell: {
+            range: {
+              sheetId,
+              startRowIndex: 0,
+              endRowIndex: 1,
+              startColumnIndex: 0,
+              endColumnIndex: 5
+            },
+            cell: {
+              userEnteredFormat: {
+                backgroundColor: { red: 0.18, green: 0.54, blue: 0.34 }, // Hijau premium
+                textFormat: {
+                  foregroundColor: { red: 1.0, green: 1.0, blue: 1.0 },
+                  bold: true,
+                  fontSize: 11
+                },
+                horizontalAlignment: 'CENTER'
+              }
+            },
+            fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)'
+          }
+        },
+        {
+          // Format Label Ringkasan (G1:G3) -> Bold
+          repeatCell: {
+            range: {
+              sheetId,
+              startRowIndex: 0,
+              endRowIndex: 3,
+              startColumnIndex: 6,
+              endColumnIndex: 7
+            },
+            cell: {
+              userEnteredFormat: {
+                textFormat: { bold: true }
+              }
+            },
+            fields: 'userEnteredFormat(textFormat)'
+          }
+        },
+        {
+          // Format Baris Sisa Saldo (G3:H3) -> Highlight Hijau Muda
+          repeatCell: {
+            range: {
+              sheetId,
+              startRowIndex: 2,
+              endRowIndex: 3,
+              startColumnIndex: 6,
+              endColumnIndex: 8
+            },
+            cell: {
+              userEnteredFormat: {
+                backgroundColor: { red: 0.88, green: 0.95, blue: 0.91 }, // Hijau muda soft
+                textFormat: { bold: true }
+              }
+            },
+            fields: 'userEnteredFormat(backgroundColor,textFormat)'
+          }
+        },
+        {
+          // Bekukan baris pertama
+          updateSheetProperties: {
+            properties: {
+              sheetId,
+              gridProperties: {
+                frozenRowCount: 1
+              }
+            },
+            fields: 'gridProperties.frozenRowCount'
+          }
+        }
+      ]
+    }
+  });
+}
+
+/**
  * Membuat Google Sheet baru secara otomatis untuk user baru,
  * mengeset header, dan membagikan akses link (Anyone with link can edit).
  *
@@ -92,59 +206,8 @@ async function createAutomatedSheet(userName) {
 
     console.log(`✅ Izin akses link diatur ke "Anyone can edit"`);
 
-    // 3. Set Header Kolom dan format tampilan agar premium
-    // Kolom: Tanggal, Tipe, Kategori, Keterangan, Jumlah (Rp)
-    const headers = [['Tanggal', 'Tipe', 'Kategori', 'Keterangan', 'Jumlah (Rp)']];
-    
-    await sheets.spreadsheets.values.update({
-      spreadsheetId,
-      range: 'Sheet1!A1:E1',
-      valueInputOption: 'USER_ENTERED',
-      requestBody: { values: headers }
-    });
-
-    // 4. Format Header (Tebalkan font, beri warna background hijau premium)
-    await sheets.spreadsheets.batchUpdate({
-      spreadsheetId,
-      requestBody: {
-        requests: [
-          {
-            repeatCell: {
-              range: {
-                sheetId: 0, // Sheet pertama biasanya ID-nya 0
-                startRowIndex: 0,
-                endRowIndex: 1,
-                startColumnIndex: 0,
-                endColumnIndex: 5
-              },
-              cell: {
-                userEnteredFormat: {
-                  backgroundColor: { red: 0.18, green: 0.54, blue: 0.34 }, // Hijau premium
-                  textFormat: {
-                    foregroundColor: { red: 1.0, green: 1.0, blue: 1.0 },
-                    bold: true,
-                    fontSize: 11
-                  },
-                  horizontalAlignment: 'CENTER'
-                }
-              },
-              fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)'
-            }
-          },
-          {
-            updateSheetProperties: {
-              properties: {
-                sheetId: 0,
-                gridProperties: {
-                  frozenRowCount: 1 // Bekukan baris pertama
-                }
-              },
-              fields: 'gridProperties.frozenRowCount'
-            }
-          }
-        ]
-      }
-    });
+    // 3. Set Header Kolom dan Ringkasan Rumus
+    await initializeSheetTemplate(sheets, spreadsheetId, 0);
 
     console.log(`✅ Header Google Sheet dikonfigurasi & diformat.`);
     return sheetUrl;
@@ -186,58 +249,7 @@ async function appendTransactionToSheet(sheetUrl, tx) {
       const spreadsheetInfo = await sheets.spreadsheets.get({ spreadsheetId });
       const sheetId = spreadsheetInfo.data.sheets[0].properties.sheetId;
 
-      const headers = [['Tanggal', 'Tipe', 'Kategori', 'Keterangan', 'Jumlah (Rp)']];
-      
-      // Tulis header
-      await sheets.spreadsheets.values.update({
-        spreadsheetId,
-        range: 'Sheet1!A1:E1',
-        valueInputOption: 'USER_ENTERED',
-        requestBody: { values: headers }
-      });
-
-      // Format header (Tebalkan font, beri warna background hijau premium, freeze row)
-      await sheets.spreadsheets.batchUpdate({
-        spreadsheetId,
-        requestBody: {
-          requests: [
-            {
-              repeatCell: {
-                range: {
-                  sheetId,
-                  startRowIndex: 0,
-                  endRowIndex: 1,
-                  startColumnIndex: 0,
-                  endColumnIndex: 5
-                },
-                cell: {
-                  userEnteredFormat: {
-                    backgroundColor: { red: 0.18, green: 0.54, blue: 0.34 }, // Hijau premium
-                    textFormat: {
-                      foregroundColor: { red: 1.0, green: 1.0, blue: 1.0 },
-                      bold: true,
-                      fontSize: 11
-                    },
-                    horizontalAlignment: 'CENTER'
-                  }
-                },
-                fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)'
-              }
-            },
-            {
-              updateSheetProperties: {
-                properties: {
-                  sheetId,
-                  gridProperties: {
-                    frozenRowCount: 1 // Bekukan baris pertama
-                  }
-                },
-                fields: 'gridProperties.frozenRowCount'
-              }
-            }
-          ]
-        }
-      });
+      await initializeSheetTemplate(sheets, spreadsheetId, sheetId);
     }
 
     // 2. Format tanggal: DD/MM/YYYY HH:mm
@@ -307,56 +319,7 @@ async function syncAllTransactionsToSheet(sheetUrl, transactions) {
       const spreadsheetInfo = await sheets.spreadsheets.get({ spreadsheetId });
       const sheetId = spreadsheetInfo.data.sheets[0].properties.sheetId;
 
-      const headers = [['Tanggal', 'Tipe', 'Kategori', 'Keterangan', 'Jumlah (Rp)']];
-      
-      await sheets.spreadsheets.values.update({
-        spreadsheetId,
-        range: 'Sheet1!A1:E1',
-        valueInputOption: 'USER_ENTERED',
-        requestBody: { values: headers }
-      });
-
-      await sheets.spreadsheets.batchUpdate({
-        spreadsheetId,
-        requestBody: {
-          requests: [
-            {
-              repeatCell: {
-                range: {
-                  sheetId,
-                  startRowIndex: 0,
-                  endRowIndex: 1,
-                  startColumnIndex: 0,
-                  endColumnIndex: 5
-                },
-                cell: {
-                  userEnteredFormat: {
-                    backgroundColor: { red: 0.18, green: 0.54, blue: 0.34 },
-                    textFormat: {
-                      foregroundColor: { red: 1.0, green: 1.0, blue: 1.0 },
-                      bold: true,
-                      fontSize: 11
-                    },
-                    horizontalAlignment: 'CENTER'
-                  }
-                },
-                fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)'
-              }
-            },
-            {
-              updateSheetProperties: {
-                properties: {
-                  sheetId,
-                  gridProperties: {
-                    frozenRowCount: 1
-                  }
-                },
-                fields: 'gridProperties.frozenRowCount'
-              }
-            }
-          ]
-        }
-      });
+      await initializeSheetTemplate(sheets, spreadsheetId, sheetId);
     }
 
     // 2. Format baris-baris data transaksi
