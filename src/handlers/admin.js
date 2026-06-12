@@ -51,6 +51,7 @@ function register(bot) {
         `/setsheet ID URL — Atur Google Sheet user\n` +
         `/users — Lihat semua user terdaftar\n` +
         `/lihat ID — Lihat transaksi user\n` +
+        `/statistik — Lihat statistik global bot\n` +
         `/aktif ID — Aktifkan user\n` +
         `/nonaktif ID — Nonaktifkan user\n` +
         `━━━━━━━━━━━━━━━━━━━`;
@@ -411,6 +412,34 @@ function register(bot) {
     } catch (error) {
       console.error('❌ Error di /lihat:', error);
       await ctx.reply('Terjadi error saat mengambil detail user.');
+    }
+  });
+  // ──────────────────────────────
+  // /statistik — Lihat Statistik Global Bot
+  // ──────────────────────────────
+  bot.command('statistik', async (ctx) => {
+    try {
+      if (await denyIfNotAdmin(ctx)) return;
+
+      const { getGlobalStatistics } = require('../services/summary');
+      const stats = getGlobalStatistics();
+
+      const message = 
+        `📈 <b>Statistik Global Data Bot</b>\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        `👥 <b>Data Pengguna:</b>\n` +
+        `• Total Terdaftar: ${stats.totalUsers} user\n` +
+        `• Status Aktif: ${stats.activeUsers} user\n\n` +
+        `📝 <b>Data Transaksi:</b>\n` +
+        `• Hari Ini: ${stats.todayTx} transaksi\n` +
+        `• Bulan Ini: ${stats.monthTx} transaksi\n` +
+        `• Total Keseluruhan: ${stats.totalTx} transaksi\n` +
+        `━━━━━━━━━━━━━━━━━━━`;
+
+      await ctx.replyWithHTML(message);
+    } catch (error) {
+      console.error('❌ Error di /statistik:', error);
+      await ctx.reply('Terjadi error saat mengambil statistik.');
     }
   });
 }

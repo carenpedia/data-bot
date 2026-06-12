@@ -131,6 +131,16 @@ const stmtRecentTransactions = db.prepare(`
 `);
 
 // ============================================================
+// PREPARED STATEMENTS — Statistik Global
+// ============================================================
+
+const stmtGlobalUsers = db.prepare('SELECT COUNT(*) AS count FROM users');
+const stmtGlobalActiveUsers = db.prepare('SELECT COUNT(*) AS count FROM users WHERE is_active = 1');
+const stmtGlobalTxTotal = db.prepare('SELECT COUNT(*) AS count FROM transactions');
+const stmtGlobalTxToday = db.prepare("SELECT COUNT(*) AS count FROM transactions WHERE date(created_at) = date('now', 'localtime')");
+const stmtGlobalTxMonth = db.prepare("SELECT COUNT(*) AS count FROM transactions WHERE strftime('%m', created_at) = strftime('%m', 'now', 'localtime') AND strftime('%Y', created_at) = strftime('%Y', 'now', 'localtime')");
+
+// ============================================================
 // HELPER — Format bulan dan tahun ke string yang dipakai SQLite
 // ============================================================
 
@@ -253,9 +263,25 @@ function getRecentTransactions(userId, limit = 5) {
   return stmtRecentTransactions.all(userId, limit);
 }
 
+/**
+ * Ambil statistik global bot.
+ *
+ * @returns {object} Objek statistik global
+ */
+function getGlobalStatistics() {
+  return {
+    totalUsers: stmtGlobalUsers.get().count,
+    activeUsers: stmtGlobalActiveUsers.get().count,
+    totalTx: stmtGlobalTxTotal.get().count,
+    todayTx: stmtGlobalTxToday.get().count,
+    monthTx: stmtGlobalTxMonth.get().count
+  };
+}
+
 module.exports = {
   getMonthlySummary,
   getDailySummary,
   getCategoryBreakdown,
   getRecentTransactions,
+  getGlobalStatistics,
 };
