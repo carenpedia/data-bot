@@ -218,7 +218,7 @@ function register(bot) {
       }
 
       let message =
-        `👥 *Daftar User Terdaftar*\n` +
+        `👥 <b>Daftar User Terdaftar</b>\n` +
         `━━━━━━━━━━━━━━━━━━━\n` +
         `Total: ${users.length} user\n\n`;
 
@@ -226,16 +226,20 @@ function register(bot) {
         const status = user.is_active ? '✅' : '❌';
         const sheet = user.sheet_url ? '📄' : '—';
         const regDate = formatDate(user.created_at);
-        const usernameStr = user.username ? ` (@${user.username})` : '';
+        
+        // Escape character < dan > jika ada di nama/username untuk HTML
+        const safeName = (user.name || 'Unknown').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const safeUsername = user.username ? user.username.replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
+        const usernameStr = safeUsername ? ` (@${safeUsername})` : '';
 
         message +=
-          `${status} *${user.name}*${usernameStr}\n` +
+          `${status} <b>${safeName}</b>${usernameStr}\n` +
           `   🆔 ${user.telegram_id} ┃ ${sheet} Sheet ┃ 📅 ${regDate}\n\n`;
       }
 
       message += `━━━━━━━━━━━━━━━━━━━`;
 
-      await ctx.replyWithMarkdown(message);
+      await ctx.replyWithHTML(message);
     } catch (error) {
       console.error('❌ Error di /users:', error);
       await ctx.reply('Terjadi error saat mengambil daftar user.');
