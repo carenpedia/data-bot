@@ -54,8 +54,8 @@ function extractSpreadsheetId(url) {
 async function initializeSheetTemplate(sheets, spreadsheetId, sheetId, sheetTitle) {
   const headers = [['Tanggal', 'Tipe', 'Kategori', 'Keterangan', 'Jumlah (Rp)']];
   const summary = [
-    ['Total Pemasukan', '=SUMIF(B:B, "Pemasukan", E:E)'],
-    ['Total Pengeluaran', '=SUMIF(B:B, "Pengeluaran", E:E)'],
+    ['Total Pemasukan', '=SUMIF(B:B; "Pemasukan"; E:E)'],
+    ['Total Pengeluaran', '=SUMIF(B:B; "Pengeluaran"; E:E)'],
     ['Sisa Saldo', '=H1-H2']
   ];
 
