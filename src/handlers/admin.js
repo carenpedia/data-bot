@@ -50,6 +50,7 @@ function register(bot) {
         `/daftar ID NAMA — Daftarkan user baru\n` +
         `/setsheet ID URL — Atur Google Sheet user\n` +
         `/users — Lihat semua user terdaftar\n` +
+        `/lihat ID — Lihat transaksi user\n` +
         `/aktif ID — Aktifkan user\n` +
         `/nonaktif ID — Nonaktifkan user\n` +
         `━━━━━━━━━━━━━━━━━━━`;
@@ -345,6 +346,71 @@ function register(bot) {
     } catch (error) {
       console.error('❌ Error di /nonaktif:', error);
       await ctx.reply('Terjadi error saat menonaktifkan user.');
+    }
+  });
+  // ──────────────────────────────
+  // /lihat <telegram_id_atau_username>
+  // Lihat detail transaksi user
+  // ──────────────────────────────
+  bot.command('lihat', async (ctx) => {
+    try {
+      if (await denyIfNotAdmin(ctx)) return;
+
+      const args = ctx.message.text.split(/\s+/).slice(1);
+
+      if (args.length < 1) {
+        await ctx.reply(
+          '⚠️ Format salah!\n\n' +
+          '📝 Cara pakai: /lihat <telegram_id_atau_username>\n' +
+          '📌 Contoh:\n' +
+          '• /lihat @budi\n' +
+          '• /lihat 123456789'
+        );
+        return;
+      }
+
+      const target = args[0];
+      const user = getUser(target);
+
+      if (!user) {
+        await ctx.reply(`⚠️ User "${target}" tidak ditemukan.`);
+        return;
+      }
+
+      const { getMonthlySummary } = require('../services/summary');
+      const { formatRupiah, formatShortDate } = require('../utils/formatter');
+
+      const summary = getMonthlySummary(user.telegram_id);
+      const recentTx = getUserTransactions(user.telegram_id, 10);
+
+      const safeName = (user.name || 'Unknown').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      
+      let message = 
+        `📊 <b>Detail User: ${safeName}</b>\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        `💰 Pemasukan Bulan Ini: ${formatRupiah(summary.totalIncome)}\n` +
+        `💸 Pengeluaran Bulan Ini: ${formatRupiah(summary.totalExpense)}\n` +
+        `💵 Sisa Saldo: ${formatRupiah(summary.balance)}\n\n` +
+        `📋 <b>10 Transaksi Terakhir:</b>\n`;
+
+      if (recentTx && recentTx.length > 0) {
+        for (const tx of recentTx) {
+          const typeEmoji = tx.type === 'income' ? '💰' : '💸';
+          const dateStr = formatShortDate(tx.created_at);
+          const safeDesc = (tx.description || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          
+          message += `• ${typeEmoji} ${safeDesc} — ${formatRupiah(tx.amount)} (${dateStr})\n`;
+        }
+      } else {
+        message += `<i>Belum ada transaksi.</i>\n`;
+      }
+
+      message += `━━━━━━━━━━━━━━━━━━━`;
+
+      await ctx.replyWithHTML(message);
+    } catch (error) {
+      console.error('❌ Error di /lihat:', error);
+      await ctx.reply('Terjadi error saat mengambil detail user.');
     }
   });
 }
