@@ -49,8 +49,9 @@ function extractSpreadsheetId(url) {
  * @param {object} sheets - Instance Sheets API
  * @param {string} spreadsheetId - ID Spreadsheet
  * @param {number} sheetId - ID Sheet (tab)
+ * @param {string} sheetTitle - Judul/Nama Sheet (tab)
  */
-async function initializeSheetTemplate(sheets, spreadsheetId, sheetId) {
+async function initializeSheetTemplate(sheets, spreadsheetId, sheetId, sheetTitle) {
   const headers = [['Tanggal', 'Tipe', 'Kategori', 'Keterangan', 'Jumlah (Rp)']];
   const summary = [
     ['Total Pemasukan', '=SUMIF(B:B, "Pemasukan", E:E)'],
@@ -61,7 +62,7 @@ async function initializeSheetTemplate(sheets, spreadsheetId, sheetId) {
   // Tulis Header Utama (A1:E1)
   await sheets.spreadsheets.values.update({
     spreadsheetId,
-    range: 'Sheet1!A1:E1',
+    range: `'${sheetTitle}'!A1:E1`,
     valueInputOption: 'USER_ENTERED',
     requestBody: { values: headers }
   });
@@ -69,7 +70,7 @@ async function initializeSheetTemplate(sheets, spreadsheetId, sheetId) {
   // Tulis Tabel Ringkasan (Kolom G & H)
   await sheets.spreadsheets.values.update({
     spreadsheetId,
-    range: 'Sheet1!G1:H3',
+    range: `'${sheetTitle}'!G1:H3`,
     valueInputOption: 'USER_ENTERED',
     requestBody: { values: summary }
   });
@@ -206,8 +207,14 @@ async function createAutomatedSheet(userName) {
 
     console.log(`✅ Izin akses link diatur ke "Anyone can edit"`);
 
+    // Dapatkan detail tab pertama
+    const spreadsheetInfo = await sheets.spreadsheets.get({ spreadsheetId });
+    const firstSheet = spreadsheetInfo.data.sheets[0];
+    const sheetId = firstSheet.properties.sheetId;
+    const sheetTitle = firstSheet.properties.title;
+
     // 3. Set Header Kolom dan Ringkasan Rumus
-    await initializeSheetTemplate(sheets, spreadsheetId, 0);
+    await initializeSheetTemplate(sheets, spreadsheetId, sheetId, sheetTitle);
 
     console.log(`✅ Header Google Sheet dikonfigurasi & diformat.`);
     return sheetUrl;
@@ -234,22 +241,23 @@ async function appendTransactionToSheet(sheetUrl, tx) {
   const { sheets } = clients;
 
   try {
-    // 1. Cek apakah Sheet masih kosong (belum ada header di A1:E1)
+    // Ambil info sheet pertama secara dinamis
+    const spreadsheetInfo = await sheets.spreadsheets.get({ spreadsheetId });
+    const firstSheet = spreadsheetInfo.data.sheets[0];
+    const sheetId = firstSheet.properties.sheetId;
+    const sheetTitle = firstSheet.properties.title;
+
+    // 1. Cek apakah Sheet masih kosong (belum ada header)
     const checkHeader = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Sheet1!A1:E1'
+      range: `'${sheetTitle}'!A1:E1`
     });
 
     const hasHeader = checkHeader.data.values && checkHeader.data.values.length > 0;
 
     if (!hasHeader) {
-      console.log('📝 Google Sheet terdeteksi kosong. Membuat header & format otomatis...');
-      
-      // Ambil sheetId utama (indeks 0)
-      const spreadsheetInfo = await sheets.spreadsheets.get({ spreadsheetId });
-      const sheetId = spreadsheetInfo.data.sheets[0].properties.sheetId;
-
-      await initializeSheetTemplate(sheets, spreadsheetId, sheetId);
+      console.log(`📝 Google Sheet terdeteksi kosong. Membuat header & format otomatis pada tab: ${sheetTitle}...`);
+      await initializeSheetTemplate(sheets, spreadsheetId, sheetId, sheetTitle);
     }
 
     // 2. Format tanggal: DD/MM/YYYY HH:mm
@@ -274,7 +282,7 @@ async function appendTransactionToSheet(sheetUrl, tx) {
     // 3. Append data transaksi ke baris berikutnya
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: 'Sheet1!A:E',
+      range: `'${sheetTitle}'!A:E`,
       valueInputOption: 'USER_ENTERED',
       requestBody: { values: [rowData] }
     });
@@ -306,20 +314,23 @@ async function syncAllTransactionsToSheet(sheetUrl, transactions) {
   const { sheets } = clients;
 
   try {
+    // Ambil info sheet pertama secara dinamis
+    const spreadsheetInfo = await sheets.spreadsheets.get({ spreadsheetId });
+    const firstSheet = spreadsheetInfo.data.sheets[0];
+    const sheetId = firstSheet.properties.sheetId;
+    const sheetTitle = firstSheet.properties.title;
+
     // 1. Pastikan header sudah ada dan terformat
     const checkHeader = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Sheet1!A1:E1'
+      range: `'${sheetTitle}'!A1:E1`
     });
 
     const hasHeader = checkHeader.data.values && checkHeader.data.values.length > 0;
 
     if (!hasHeader) {
-      console.log('📝 Google Sheet kosong saat sync masal. Membuat header & format otomatis...');
-      const spreadsheetInfo = await sheets.spreadsheets.get({ spreadsheetId });
-      const sheetId = spreadsheetInfo.data.sheets[0].properties.sheetId;
-
-      await initializeSheetTemplate(sheets, spreadsheetId, sheetId);
+      console.log(`📝 Google Sheet kosong saat sync masal. Membuat header & format otomatis pada tab: ${sheetTitle}...`);
+      await initializeSheetTemplate(sheets, spreadsheetId, sheetId, sheetTitle);
     }
 
     // 2. Format baris-baris data transaksi
@@ -346,7 +357,7 @@ async function syncAllTransactionsToSheet(sheetUrl, transactions) {
     // 3. Tulis seluruh data secara massal (batch append)
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: 'Sheet1!A:E',
+      range: `'${sheetTitle}'!A:E`,
       valueInputOption: 'USER_ENTERED',
       requestBody: { values: rowsData }
     });
@@ -358,7 +369,6 @@ async function syncAllTransactionsToSheet(sheetUrl, transactions) {
     return false;
   }
 }
-
 
 /**
  * Menghapus baris transaksi terakhir di Google Sheet.
@@ -377,10 +387,16 @@ async function deleteLastTransactionFromSheet(sheetUrl) {
   const { sheets } = clients;
 
   try {
+    // Ambil info sheet pertama secara dinamis
+    const spreadsheetInfo = await sheets.spreadsheets.get({ spreadsheetId });
+    const firstSheet = spreadsheetInfo.data.sheets[0];
+    const sheetId = firstSheet.properties.sheetId;
+    const sheetTitle = firstSheet.properties.title;
+
     // 1. Ambil data baris untuk mengetahui baris terakhir yang terisi
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Sheet1!A:E'
+      range: `'${sheetTitle}'!A:E`
     });
 
     const rows = response.data.values;
@@ -390,10 +406,6 @@ async function deleteLastTransactionFromSheet(sheetUrl) {
     }
 
     const lastRowIndex = rows.length; // 1-indexed index baris terakhir
-
-    // 2. Ambil sheetId utama (indeks 0)
-    const spreadsheetInfo = await sheets.spreadsheets.get({ spreadsheetId });
-    const sheetId = spreadsheetInfo.data.sheets[0].properties.sheetId;
 
     // 3. Hapus baris terakhir
     await sheets.spreadsheets.batchUpdate({
