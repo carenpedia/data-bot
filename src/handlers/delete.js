@@ -6,7 +6,7 @@
 // Mendukung flow: tampilkan → konfirmasi → hapus.
 // ============================================
 
-const { getLastTransaction, deleteTransaction, getUser } = require('../services/transaction');
+const { getLastTransaction, deleteTransaction, getUser, getTransactionById } = require('../services/transaction');
 const { formatRupiah, formatDateTime } = require('../utils/formatter');
 const { backToMenuKeyboard } = require('../utils/keyboard');
 const { Markup } = require('telegraf');
@@ -132,15 +132,19 @@ function register(bot) {
       await ctx.answerCbQuery();
       const transactionId = parseInt(ctx.match[1], 10);
 
+      // Ambil data transaksi SEBELUM dihapus dari DB
+      // (diperlukan untuk menentukan tab bulan & section yang tepat di Google Sheet)
+      const transactionData = getTransactionById(transactionId);
+
       // Hapus transaksi dari database
       const deleted = deleteTransaction(transactionId, ctx.from.id);
 
       if (deleted) {
         // Hapus dari Google Sheet juga jika ada sheet_url
         const user = getUser(ctx.from.id);
-        if (user && user.sheet_url) {
+        if (user && user.sheet_url && transactionData) {
           const { deleteLastTransactionFromSheet } = require('../services/googleSheets');
-          deleteLastTransactionFromSheet(user.sheet_url).catch(err => 
+          deleteLastTransactionFromSheet(user.sheet_url, transactionData).catch(err => 
             console.error('❌ Gagal menghapus transaksi dari Google Sheet:', err)
           );
         }

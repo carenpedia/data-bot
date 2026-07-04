@@ -147,6 +147,17 @@ function getLastTransaction(userId) {
 }
 
 /**
+ * Ambil transaksi berdasarkan ID.
+ * Berguna untuk mengambil data transaksi sebelum dihapus.
+ *
+ * @param {number} transactionId - ID transaksi
+ * @returns {object|undefined} Data transaksi, atau undefined jika tidak ditemukan
+ */
+function getTransactionById(transactionId) {
+  return stmtGetTransaction.get(transactionId);
+}
+
+/**
  * Hapus transaksi berdasarkan ID.
  * Hanya bisa menghapus transaksi milik user yang bersangkutan
  * (untuk keamanan).
@@ -234,6 +245,7 @@ module.exports = {
   ensureUser,
   saveTransaction,
   getLastTransaction,
+  getTransactionById,
   deleteTransaction,
   getUserTransactions,
   getUser,

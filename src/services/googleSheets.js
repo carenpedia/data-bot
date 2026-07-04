@@ -11,6 +11,12 @@ const SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets'
 ];
 
+// Nama bulan dalam Bahasa Indonesia
+const MONTH_NAMES = [
+  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+];
+
 /**
  * Mendapatkan instance Google API Client terautentikasi
  * @returns {object|null} { drive, sheets } atau null jika kredensial tidak ditemukan
@@ -44,7 +50,34 @@ function extractSpreadsheetId(url) {
 }
 
 /**
- * Menginisialisasi header dan ringkasan rumus pada Google Sheet yang kosong.
+ * Membuat judul tab berdasarkan bulan dan tahun.
+ * Contoh: "Juli 2026"
+ *
+ * @param {number} month - Bulan (1-12)
+ * @param {number} year - Tahun (contoh: 2026)
+ * @returns {string} Judul tab
+ */
+function getMonthlyTabTitle(month, year) {
+  return `${MONTH_NAMES[month - 1]} ${year}`;
+}
+
+// ============================================================
+// TEMPLATE — Inisialisasi Layout Baru pada Tab
+// ============================================================
+
+/**
+ * Menginisialisasi template pada tab Google Sheet.
+ *
+ * Layout baru:
+ *   Kolom A-D  → PEMASUKAN  (Tanggal, Kategori, Keterangan, Jumlah)
+ *   Kolom E    → separator kosong
+ *   Kolom F-I  → PENGELUARAN (Tanggal, Kategori, Keterangan, Jumlah)
+ *   Kolom J    → separator kosong
+ *   Kolom K-L  → RINGKASAN  (label & rumus)
+ *
+ * Baris 1: Judul section
+ * Baris 2: Header kolom
+ * Baris 3+: Data transaksi
  *
  * @param {object} sheets - Instance Sheets API
  * @param {string} spreadsheetId - ID Spreadsheet
@@ -52,51 +85,63 @@ function extractSpreadsheetId(url) {
  * @param {string} sheetTitle - Judul/Nama Sheet (tab)
  */
 async function initializeSheetTemplate(sheets, spreadsheetId, sheetId, sheetTitle) {
-  const headers = [['Tanggal', 'Tipe', 'Kategori', 'Keterangan', 'Jumlah (Rp)']];
+  // Baris 1: Judul Section
+  const sectionTitles = [['💰 PEMASUKAN', '', '', '', '', '💸 PENGELUARAN', '', '', '', '', '📊 RINGKASAN']];
+
+  // Baris 2: Header Kolom (Pemasukan A-D & Pengeluaran F-I)
+  const headers = [['Tanggal', 'Kategori', 'Keterangan', 'Jumlah (Rp)', '', 'Tanggal', 'Kategori', 'Keterangan', 'Jumlah (Rp)']];
+
+  // Ringkasan (K1:L4)
   const summary = [
-    ['Total Pemasukan', '=SUMIF(B:B; "Pemasukan"; E:E)'],
-    ['Total Pengeluaran', '=SUMIF(B:B; "Pengeluaran"; E:E)'],
-    ['Sisa Saldo', '=H1-H2']
+    ['📊 RINGKASAN', ''],
+    ['Total Pemasukan', '=SUM(D3:D10000)'],
+    ['Total Pengeluaran', '=SUM(I3:I10000)'],
+    ['Sisa Saldo', '=L2-L3']
   ];
 
-  // Tulis Header Utama (A1:E1)
+  // 1. Tulis judul section (A1:K1)
   await sheets.spreadsheets.values.update({
     spreadsheetId,
-    range: `'${sheetTitle}'!A1:E1`,
+    range: `'${sheetTitle}'!A1:K1`,
+    valueInputOption: 'USER_ENTERED',
+    requestBody: { values: sectionTitles }
+  });
+
+  // 2. Tulis header kolom (A2:I2)
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: `'${sheetTitle}'!A2:I2`,
     valueInputOption: 'USER_ENTERED',
     requestBody: { values: headers }
   });
 
-  // Tulis Tabel Ringkasan (Kolom G & H)
+  // 3. Tulis tabel ringkasan (K1:L4)
   await sheets.spreadsheets.values.update({
     spreadsheetId,
-    range: `'${sheetTitle}'!G1:H3`,
+    range: `'${sheetTitle}'!K1:L4`,
     valueInputOption: 'USER_ENTERED',
     requestBody: { values: summary }
   });
 
-  // Format Tampilan (Tebalkan font, warna background, freeze row)
+  // 4. Format tampilan (warna, font, freeze)
   await sheets.spreadsheets.batchUpdate({
     spreadsheetId,
     requestBody: {
       requests: [
+        // ─── Judul "💰 PEMASUKAN" (A1:D1) → Hijau Premium ───
         {
-          // Format Header Utama (A1:E1) -> Hijau Premium
           repeatCell: {
             range: {
               sheetId,
-              startRowIndex: 0,
-              endRowIndex: 1,
-              startColumnIndex: 0,
-              endColumnIndex: 5
+              startRowIndex: 0, endRowIndex: 1,
+              startColumnIndex: 0, endColumnIndex: 4
             },
             cell: {
               userEnteredFormat: {
-                backgroundColor: { red: 0.18, green: 0.54, blue: 0.34 }, // Hijau premium
+                backgroundColor: { red: 0.18, green: 0.54, blue: 0.34 },
                 textFormat: {
                   foregroundColor: { red: 1.0, green: 1.0, blue: 1.0 },
-                  bold: true,
-                  fontSize: 11
+                  bold: true, fontSize: 12
                 },
                 horizontalAlignment: 'CENTER'
               }
@@ -104,15 +149,91 @@ async function initializeSheetTemplate(sheets, spreadsheetId, sheetId, sheetTitl
             fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)'
           }
         },
+        // ─── Header Pemasukan (A2:D2) → Hijau Muda ───
         {
-          // Format Label Ringkasan (G1:G3) -> Bold
           repeatCell: {
             range: {
               sheetId,
-              startRowIndex: 0,
-              endRowIndex: 3,
-              startColumnIndex: 6,
-              endColumnIndex: 7
+              startRowIndex: 1, endRowIndex: 2,
+              startColumnIndex: 0, endColumnIndex: 4
+            },
+            cell: {
+              userEnteredFormat: {
+                backgroundColor: { red: 0.85, green: 0.93, blue: 0.83 },
+                textFormat: { bold: true, fontSize: 10 },
+                horizontalAlignment: 'CENTER'
+              }
+            },
+            fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)'
+          }
+        },
+        // ─── Judul "💸 PENGELUARAN" (F1:I1) → Merah ───
+        {
+          repeatCell: {
+            range: {
+              sheetId,
+              startRowIndex: 0, endRowIndex: 1,
+              startColumnIndex: 5, endColumnIndex: 9
+            },
+            cell: {
+              userEnteredFormat: {
+                backgroundColor: { red: 0.80, green: 0.20, blue: 0.20 },
+                textFormat: {
+                  foregroundColor: { red: 1.0, green: 1.0, blue: 1.0 },
+                  bold: true, fontSize: 12
+                },
+                horizontalAlignment: 'CENTER'
+              }
+            },
+            fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)'
+          }
+        },
+        // ─── Header Pengeluaran (F2:I2) → Merah Muda ───
+        {
+          repeatCell: {
+            range: {
+              sheetId,
+              startRowIndex: 1, endRowIndex: 2,
+              startColumnIndex: 5, endColumnIndex: 9
+            },
+            cell: {
+              userEnteredFormat: {
+                backgroundColor: { red: 0.96, green: 0.80, blue: 0.80 },
+                textFormat: { bold: true, fontSize: 10 },
+                horizontalAlignment: 'CENTER'
+              }
+            },
+            fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)'
+          }
+        },
+        // ─── Judul Ringkasan (K1:L1) → Biru ───
+        {
+          repeatCell: {
+            range: {
+              sheetId,
+              startRowIndex: 0, endRowIndex: 1,
+              startColumnIndex: 10, endColumnIndex: 12
+            },
+            cell: {
+              userEnteredFormat: {
+                backgroundColor: { red: 0.24, green: 0.45, blue: 0.75 },
+                textFormat: {
+                  foregroundColor: { red: 1.0, green: 1.0, blue: 1.0 },
+                  bold: true, fontSize: 12
+                },
+                horizontalAlignment: 'CENTER'
+              }
+            },
+            fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)'
+          }
+        },
+        // ─── Label Ringkasan (K2:K4) → Bold ───
+        {
+          repeatCell: {
+            range: {
+              sheetId,
+              startRowIndex: 1, endRowIndex: 4,
+              startColumnIndex: 10, endColumnIndex: 11
             },
             cell: {
               userEnteredFormat: {
@@ -122,32 +243,30 @@ async function initializeSheetTemplate(sheets, spreadsheetId, sheetId, sheetTitl
             fields: 'userEnteredFormat(textFormat)'
           }
         },
+        // ─── Baris Sisa Saldo (K4:L4) → Highlight Biru Muda ───
         {
-          // Format Baris Sisa Saldo (G3:H3) -> Highlight Hijau Muda
           repeatCell: {
             range: {
               sheetId,
-              startRowIndex: 2,
-              endRowIndex: 3,
-              startColumnIndex: 6,
-              endColumnIndex: 8
+              startRowIndex: 3, endRowIndex: 4,
+              startColumnIndex: 10, endColumnIndex: 12
             },
             cell: {
               userEnteredFormat: {
-                backgroundColor: { red: 0.88, green: 0.95, blue: 0.91 }, // Hijau muda soft
+                backgroundColor: { red: 0.85, green: 0.92, blue: 0.98 },
                 textFormat: { bold: true }
               }
             },
             fields: 'userEnteredFormat(backgroundColor,textFormat)'
           }
         },
+        // ─── Bekukan 2 baris pertama (judul + header) ───
         {
-          // Bekukan baris pertama
           updateSheetProperties: {
             properties: {
               sheetId,
               gridProperties: {
-                frozenRowCount: 1
+                frozenRowCount: 2
               }
             },
             fields: 'gridProperties.frozenRowCount'
@@ -157,6 +276,135 @@ async function initializeSheetTemplate(sheets, spreadsheetId, sheetId, sheetTitl
     }
   });
 }
+
+// ============================================================
+// TAB BULANAN — Get or Create
+// ============================================================
+
+/**
+ * Mendapatkan atau membuat tab bulanan pada Google Sheet.
+ * Jika tab untuk bulan/tahun tersebut belum ada, buat baru dan inisialisasi template.
+ * Jika sheet hanya punya satu tab default yang masih kosong, rename saja.
+ *
+ * @param {object} sheets - Instance Sheets API
+ * @param {string} spreadsheetId - ID Spreadsheet
+ * @param {number} month - Bulan (1-12)
+ * @param {number} year - Tahun (contoh: 2026)
+ * @returns {Promise<{sheetId: number, sheetTitle: string}>}
+ */
+async function getOrCreateMonthlyTab(sheets, spreadsheetId, month, year) {
+  const targetTitle = getMonthlyTabTitle(month, year);
+
+  // Ambil semua tab yang ada di spreadsheet
+  const spreadsheetInfo = await sheets.spreadsheets.get({ spreadsheetId });
+  const existingSheets = spreadsheetInfo.data.sheets;
+
+  // Cari tab dengan judul yang cocok
+  const existing = existingSheets.find(s => s.properties.title === targetTitle);
+  if (existing) {
+    return {
+      sheetId: existing.properties.sheetId,
+      sheetTitle: existing.properties.title
+    };
+  }
+
+  // Cek apakah ini tab pertama dan masih default (Sheet1 / kosong)
+  // Jika iya, rename saja daripada buat tab baru
+  if (existingSheets.length === 1) {
+    const firstSheet = existingSheets[0];
+    const firstTitle = firstSheet.properties.title;
+
+    // Cek apakah sheet ini masih kosong (belum ada data)
+    const checkData = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `'${firstTitle}'!A1:I3`
+    });
+
+    const isEmpty = !checkData.data.values || checkData.data.values.length === 0;
+
+    if (isEmpty) {
+      // Rename tab default ke nama bulan
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          requests: [{
+            updateSheetProperties: {
+              properties: {
+                sheetId: firstSheet.properties.sheetId,
+                title: targetTitle
+              },
+              fields: 'title'
+            }
+          }]
+        }
+      });
+
+      // Inisialisasi template pada tab yang sudah di-rename
+      await initializeSheetTemplate(sheets, spreadsheetId, firstSheet.properties.sheetId, targetTitle);
+
+      console.log(`📑 Tab default di-rename menjadi: "${targetTitle}"`);
+      return {
+        sheetId: firstSheet.properties.sheetId,
+        sheetTitle: targetTitle
+      };
+    }
+  }
+
+  // Buat tab baru
+  const addSheetResponse = await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: [{
+        addSheet: {
+          properties: {
+            title: targetTitle
+          }
+        }
+      }]
+    }
+  });
+
+  const newSheetId = addSheetResponse.data.replies[0].addSheet.properties.sheetId;
+
+  // Inisialisasi template pada tab baru
+  await initializeSheetTemplate(sheets, spreadsheetId, newSheetId, targetTitle);
+
+  console.log(`📑 Tab baru dibuat: "${targetTitle}"`);
+  return {
+    sheetId: newSheetId,
+    sheetTitle: targetTitle
+  };
+}
+
+// ============================================================
+// HELPER — Format tanggal transaksi
+// ============================================================
+
+/**
+ * Format tanggal transaksi menjadi string DD/MM/YYYY HH:mm
+ *
+ * @param {string|number} dateInput - Tanggal (ISO string, timestamp, dll.)
+ * @returns {{formattedDate: string, month: number, year: number}}
+ */
+function formatTransactionDate(dateInput) {
+  const dateObj = new Date(dateInput || Date.now());
+  const day = String(dateObj.getDate()).padStart(2, '0');
+  const month = dateObj.getMonth() + 1;
+  const monthStr = String(month).padStart(2, '0');
+  const year = dateObj.getFullYear();
+  const hours = String(dateObj.getHours()).padStart(2, '0');
+  const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+
+  return {
+    formattedDate: `${day}/${monthStr}/${year} ${hours}:${minutes}`,
+    month,
+    year
+  };
+}
+
+// ============================================================
+// FUNGSI UTAMA — CRUD Transaksi di Google Sheet
+// ============================================================
 
 /**
  * Membuat Google Sheet baru secara otomatis untuk user baru,
@@ -207,16 +455,13 @@ async function createAutomatedSheet(userName) {
 
     console.log(`✅ Izin akses link diatur ke "Anyone can edit"`);
 
-    // Dapatkan detail tab pertama
-    const spreadsheetInfo = await sheets.spreadsheets.get({ spreadsheetId });
-    const firstSheet = spreadsheetInfo.data.sheets[0];
-    const sheetId = firstSheet.properties.sheetId;
-    const sheetTitle = firstSheet.properties.title;
+    // 3. Buat tab untuk bulan saat ini (rename Sheet1 default)
+    const now = new Date();
+    const month = now.getMonth() + 1;
+    const year = now.getFullYear();
+    await getOrCreateMonthlyTab(sheets, spreadsheetId, month, year);
 
-    // 3. Set Header Kolom dan Ringkasan Rumus
-    await initializeSheetTemplate(sheets, spreadsheetId, sheetId, sheetTitle);
-
-    console.log(`✅ Header Google Sheet dikonfigurasi & diformat.`);
+    console.log(`✅ Google Sheet dikonfigurasi dengan tab "${getMonthlyTabTitle(month, year)}".`);
     return sheetUrl;
   } catch (error) {
     console.error('❌ Gagal membuat Google Sheet otomatis:', error);
@@ -226,6 +471,8 @@ async function createAutomatedSheet(userName) {
 
 /**
  * Menambahkan baris transaksi baru ke Google Sheet user.
+ * Otomatis memilih tab bulanan yang tepat dan section yang sesuai
+ * (Pemasukan → kolom A-D, Pengeluaran → kolom F-I).
  *
  * @param {string} sheetUrl - URL Google Sheet user
  * @param {object} tx - Data transaksi
@@ -241,53 +488,37 @@ async function appendTransactionToSheet(sheetUrl, tx) {
   const { sheets } = clients;
 
   try {
-    // Ambil info sheet pertama secara dinamis
-    const spreadsheetInfo = await sheets.spreadsheets.get({ spreadsheetId });
-    const firstSheet = spreadsheetInfo.data.sheets[0];
-    const sheetId = firstSheet.properties.sheetId;
-    const sheetTitle = firstSheet.properties.title;
+    // Tentukan bulan & tahun dari tanggal transaksi
+    const { formattedDate, month, year } = formatTransactionDate(tx.created_at);
 
-    // 1. Cek apakah Sheet masih kosong (belum ada header)
-    const checkHeader = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: `'${sheetTitle}'!A1:E1`
-    });
+    // Dapatkan atau buat tab bulanan yang sesuai
+    const { sheetTitle } = await getOrCreateMonthlyTab(sheets, spreadsheetId, month, year);
 
-    const hasHeader = checkHeader.data.values && checkHeader.data.values.length > 0;
-
-    if (!hasHeader) {
-      console.log(`📝 Google Sheet terdeteksi kosong. Membuat header & format otomatis pada tab: ${sheetTitle}...`);
-      await initializeSheetTemplate(sheets, spreadsheetId, sheetId, sheetTitle);
-    }
-
-    // 2. Format tanggal: DD/MM/YYYY HH:mm
-    const dateObj = new Date(tx.created_at || Date.now());
-    const day = String(dateObj.getDate()).padStart(2, '0');
-    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-    const year = dateObj.getFullYear();
-    const hours = String(dateObj.getHours()).padStart(2, '0');
-    const minutes = String(dateObj.getMinutes()).padStart(2, '0');
-    const formattedDate = `${day}/${month}/${year} ${hours}:${minutes}`;
-
-    const typeStr = tx.type === 'income' ? 'Pemasukan' : 'Pengeluaran';
-    
+    // Format baris data (tanpa kolom Tipe — sudah terpisah secara layout)
     const rowData = [
       formattedDate,
-      typeStr,
       tx.category || 'Lainnya',
       tx.description || '',
       tx.amount || 0
     ];
 
-    // 3. Append data transaksi ke baris berikutnya
+    // Tentukan range berdasarkan tipe transaksi
+    // income  → kolom A-D (section Pemasukan)
+    // expense → kolom F-I (section Pengeluaran)
+    const range = tx.type === 'income'
+      ? `'${sheetTitle}'!A:D`
+      : `'${sheetTitle}'!F:I`;
+
+    // Append data transaksi ke baris berikutnya pada section yang tepat
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: `'${sheetTitle}'!A:E`,
+      range,
       valueInputOption: 'USER_ENTERED',
       requestBody: { values: [rowData] }
     });
 
-    console.log(`📊 Berhasil sinkronisasi transaksi ke Google Sheet (${tx.description} - Rp ${tx.amount})`);
+    const typeLabel = tx.type === 'income' ? 'Pemasukan' : 'Pengeluaran';
+    console.log(`📊 Berhasil sinkronisasi ${typeLabel} ke tab "${sheetTitle}" (${tx.description} - Rp ${tx.amount})`);
     return true;
   } catch (error) {
     console.error('❌ Gagal sinkronisasi transaksi ke Google Sheet:', error);
@@ -296,7 +527,9 @@ async function appendTransactionToSheet(sheetUrl, tx) {
 }
 
 /**
- * Sinkronisasi seluruh transaksi yang ada di database lokal ke Google Sheet (misal saat sheet baru didaftarkan).
+ * Sinkronisasi seluruh transaksi yang ada di database lokal ke Google Sheet.
+ * Data dikelompokkan per bulan dan ditulis ke tab bulanan masing-masing.
+ * Dalam setiap tab, pemasukan dan pengeluaran ditulis ke section terpisah.
  *
  * @param {string} sheetUrl - URL Google Sheet user
  * @param {Array<object>} transactions - Daftar transaksi dari database (diurutkan dari lama ke baru)
@@ -314,55 +547,62 @@ async function syncAllTransactionsToSheet(sheetUrl, transactions) {
   const { sheets } = clients;
 
   try {
-    // Ambil info sheet pertama secara dinamis
-    const spreadsheetInfo = await sheets.spreadsheets.get({ spreadsheetId });
-    const firstSheet = spreadsheetInfo.data.sheets[0];
-    const sheetId = firstSheet.properties.sheetId;
-    const sheetTitle = firstSheet.properties.title;
+    // 1. Kelompokkan transaksi berdasarkan bulan/tahun
+    const grouped = {};
 
-    // 1. Pastikan header sudah ada dan terformat
-    const checkHeader = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: `'${sheetTitle}'!A1:E1`
-    });
+    for (const tx of transactions) {
+      const { formattedDate, month, year } = formatTransactionDate(tx.created_at);
+      const key = `${year}-${String(month).padStart(2, '0')}`; // "2026-07" → untuk sorting
 
-    const hasHeader = checkHeader.data.values && checkHeader.data.values.length > 0;
+      if (!grouped[key]) {
+        grouped[key] = { month, year, income: [], expense: [] };
+      }
 
-    if (!hasHeader) {
-      console.log(`📝 Google Sheet kosong saat sync masal. Membuat header & format otomatis pada tab: ${sheetTitle}...`);
-      await initializeSheetTemplate(sheets, spreadsheetId, sheetId, sheetTitle);
-    }
-
-    // 2. Format baris-baris data transaksi
-    const rowsData = transactions.map(tx => {
-      const dateObj = new Date(tx.created_at || Date.now());
-      const day = String(dateObj.getDate()).padStart(2, '0');
-      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-      const year = dateObj.getFullYear();
-      const hours = String(dateObj.getHours()).padStart(2, '0');
-      const minutes = String(dateObj.getMinutes()).padStart(2, '0');
-      const formattedDate = `${day}/${month}/${year} ${hours}:${minutes}`;
-
-      const typeStr = tx.type === 'income' ? 'Pemasukan' : 'Pengeluaran';
-      
-      return [
+      const rowData = [
         formattedDate,
-        typeStr,
         tx.category || 'Lainnya',
         tx.description || '',
         tx.amount || 0
       ];
-    });
 
-    // 3. Tulis seluruh data secara massal (batch append)
-    await sheets.spreadsheets.values.append({
-      spreadsheetId,
-      range: `'${sheetTitle}'!A:E`,
-      valueInputOption: 'USER_ENTERED',
-      requestBody: { values: rowsData }
-    });
+      if (tx.type === 'income') {
+        grouped[key].income.push(rowData);
+      } else {
+        grouped[key].expense.push(rowData);
+      }
+    }
 
-    console.log(`📊 Berhasil sinkronisasi masal ${transactions.length} transaksi ke Google Sheet.`);
+    // 2. Tulis data untuk setiap grup bulan (diurutkan kronologis)
+    const sortedKeys = Object.keys(grouped).sort();
+
+    for (const key of sortedKeys) {
+      const { month, year, income, expense } = grouped[key];
+      const { sheetTitle } = await getOrCreateMonthlyTab(sheets, spreadsheetId, month, year);
+
+      // Tulis batch pemasukan ke section A-D
+      if (income.length > 0) {
+        await sheets.spreadsheets.values.append({
+          spreadsheetId,
+          range: `'${sheetTitle}'!A:D`,
+          valueInputOption: 'USER_ENTERED',
+          requestBody: { values: income }
+        });
+      }
+
+      // Tulis batch pengeluaran ke section F-I
+      if (expense.length > 0) {
+        await sheets.spreadsheets.values.append({
+          spreadsheetId,
+          range: `'${sheetTitle}'!F:I`,
+          valueInputOption: 'USER_ENTERED',
+          requestBody: { values: expense }
+        });
+      }
+
+      console.log(`📊 Tab "${sheetTitle}": ${income.length} pemasukan, ${expense.length} pengeluaran disinkronkan.`);
+    }
+
+    console.log(`📊 Berhasil sinkronisasi masal ${transactions.length} transaksi ke Google Sheet (${sortedKeys.length} tab bulan).`);
     return true;
   } catch (error) {
     console.error('❌ Gagal sinkronisasi masal transaksi ke Google Sheet:', error);
@@ -372,12 +612,16 @@ async function syncAllTransactionsToSheet(sheetUrl, transactions) {
 
 /**
  * Menghapus baris transaksi terakhir di Google Sheet.
- * Digunakan saat user melakukan pembatalan/penghapusan transaksi terakhir.
+ * Menentukan tab dan section yang tepat berdasarkan data transaksi.
+ *
+ * Menggunakan clear (bukan delete row) agar tidak menggeser baris
+ * pada section yang berlawanan.
  *
  * @param {string} sheetUrl - URL Google Sheet user
+ * @param {object} transaction - Data transaksi yang dihapus (untuk menentukan tab & section)
  * @returns {Promise<boolean>} true jika sukses
  */
-async function deleteLastTransactionFromSheet(sheetUrl) {
+async function deleteLastTransactionFromSheet(sheetUrl, transaction) {
   const clients = getGoogleClients();
   if (!clients) return false;
 
@@ -387,49 +631,61 @@ async function deleteLastTransactionFromSheet(sheetUrl) {
   const { sheets } = clients;
 
   try {
-    // Ambil info sheet pertama secara dinamis
-    const spreadsheetInfo = await sheets.spreadsheets.get({ spreadsheetId });
-    const firstSheet = spreadsheetInfo.data.sheets[0];
-    const sheetId = firstSheet.properties.sheetId;
-    const sheetTitle = firstSheet.properties.title;
+    // Tentukan tab bulan berdasarkan tanggal transaksi
+    const dateObj = new Date(transaction.created_at || Date.now());
+    const month = dateObj.getMonth() + 1;
+    const year = dateObj.getFullYear();
+    const targetTitle = getMonthlyTabTitle(month, year);
 
-    // 1. Ambil data baris untuk mengetahui baris terakhir yang terisi
+    // Ambil info spreadsheet dan cari tab yang sesuai
+    const spreadsheetInfo = await sheets.spreadsheets.get({ spreadsheetId });
+    const targetSheet = spreadsheetInfo.data.sheets.find(
+      s => s.properties.title === targetTitle
+    );
+
+    if (!targetSheet) {
+      console.log(`⚠️ Tab "${targetTitle}" tidak ditemukan di Google Sheet.`);
+      return false;
+    }
+
+    const sheetTitle = targetSheet.properties.title;
+
+    // Tentukan range berdasarkan tipe transaksi
+    const isIncome = transaction.type === 'income';
+    const dataRange = isIncome
+      ? `'${sheetTitle}'!A:D`
+      : `'${sheetTitle}'!F:I`;
+
+    // Ambil data dari section yang sesuai
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: `'${sheetTitle}'!A:E`
+      range: dataRange
     });
 
     const rows = response.data.values;
-    if (!rows || rows.length <= 1) {
-      console.log('⚠️ Google Sheet kosong atau hanya berisi header. Tidak ada yang bisa dihapus.');
-      return false; // Kosong atau hanya header
+    if (!rows || rows.length <= 2) {
+      // Hanya header (2 baris judul + header), tidak ada data transaksi
+      console.log('⚠️ Tidak ada data transaksi di section ini untuk dihapus.');
+      return false;
     }
 
-    const lastRowIndex = rows.length; // 1-indexed index baris terakhir
+    // Hapus konten baris terakhir (menggunakan clear, bukan delete row,
+    // agar tidak menggeser baris pada section yang berlawanan)
+    const lastRowNumber = rows.length; // 1-indexed
+    const clearRange = isIncome
+      ? `'${sheetTitle}'!A${lastRowNumber}:D${lastRowNumber}`
+      : `'${sheetTitle}'!F${lastRowNumber}:I${lastRowNumber}`;
 
-    // 3. Hapus baris terakhir
-    await sheets.spreadsheets.batchUpdate({
+    await sheets.spreadsheets.values.clear({
       spreadsheetId,
-      requestBody: {
-        requests: [
-          {
-            deleteDimension: {
-              range: {
-                sheetId,
-                dimension: 'ROWS',
-                startIndex: lastRowIndex - 1, // 0-indexed, baris terakhir
-                endIndex: lastRowIndex // eksklusif
-              }
-            }
-          }
-        ]
-      }
+      range: clearRange
     });
 
-    console.log(`📊 Berhasil menghapus baris ke-${lastRowIndex} di Google Sheet.`);
+    const typeLabel = isIncome ? 'Pemasukan' : 'Pengeluaran';
+    console.log(`📊 Berhasil menghapus ${typeLabel} baris ke-${lastRowNumber} dari tab "${sheetTitle}".`);
     return true;
   } catch (error) {
-    console.error('❌ Gagal menghapus transaksi terakhir di Google Sheet:', error);
+    console.error('❌ Gagal menghapus transaksi dari Google Sheet:', error);
     return false;
   }
 }
